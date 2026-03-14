@@ -1,9 +1,14 @@
-import { Controller, Post, Get, Body, Delete, Param, UnauthorizedException } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse, ApiParam } from '@nestjs/swagger';
+import { Controller, Post, Get, Body, Delete, Param, Query, UnauthorizedException } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { ChatService } from './chat.service';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { SendMessageDto } from './dto/sendMessage.dto';
-import { ChatSessionResponseDto, ChatClearSessionResponseDto, ChatHistoryResponseDto } from './dto/chatResponse.dto';
+import {
+  ChatSessionResponseDto,
+  ChatClearSessionResponseDto,
+  ChatHistoryResponseDto,
+  ChatSessionsListResponseDto,
+} from './dto/chatResponse.dto';
 import * as crypto from 'crypto';
 
 @ApiTags('Chat')
@@ -11,6 +16,47 @@ import * as crypto from 'crypto';
 @Controller('chat')
 export class ChatController {
   constructor(private readonly chatService: ChatService) {}
+
+  @Get()
+  @ApiOperation({ summary: 'List previous chat session IDs for the current user' })
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 20 })
+  @ApiQuery({ name: 'order', required: false, enum: ['asc', 'desc'], example: 'desc' })
+  @ApiResponse({
+    status: 200,
+    description: 'Chat sessions retrieved successfully.',
+    type: ChatSessionsListResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized.' })
+  async listSessions(
+    @CurrentUser() userId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('order') order?: 'asc' | 'desc',
+  ) {
+    if (!userId) {
+      throw new UnauthorizedException('Missing or invalid bearer token');
+    }
+
+    const parsedPage = Number(page) || 1;
+    const parsedLimit = Number(limit) || 20;
+    const parsedOrder: 'asc' | 'desc' = order === 'asc' ? 'asc' : 'desc';
+
+    const result = await this.chatService.listSessionIds(
+      userId,
+      parsedPage,
+      parsedLimit,
+      parsedOrder,
+    );
+
+    return {
+      userId,
+      page: Math.max(1, parsedPage),
+      limit: Math.max(1, parsedLimit),
+      total: result.total,
+      sessions: result.sessions,
+    };
+  }
 
   @Post()
   @ApiOperation({ summary: 'Initialize a new AI Chat session for the user' })

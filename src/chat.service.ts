@@ -305,4 +305,51 @@ export class ChatService implements OnModuleInit {
 
     return enrichedHistory;
   }
+
+  async listSessionIds(
+    userId: string,
+    page = 1,
+    limit = 20,
+    order: 'asc' | 'desc' = 'desc',
+  ): Promise<{ total: number; sessions: { sessionId: string; updatedAt: string }[] }> {
+    const userDir = path.join(this.sessionsDir, userId);
+    try {
+      const entries = await fs.readdir(userDir, { withFileTypes: true });
+      const jsonFiles = entries.filter((entry) => entry.isFile() && entry.name.endsWith('.json'));
+
+      const sessionsWithStats = await Promise.all(
+        jsonFiles.map(async (file) => {
+          const filePath = path.join(userDir, file.name);
+          const stats = await fs.stat(filePath);
+          return {
+            sessionId: file.name.replace(/\.json$/i, ''),
+            updatedAtMs: stats.mtimeMs,
+          };
+        }),
+      );
+
+      sessionsWithStats.sort((a, b) => {
+        if (order === 'asc') {
+          return a.updatedAtMs - b.updatedAtMs;
+        }
+        return b.updatedAtMs - a.updatedAtMs;
+      });
+
+      const total = sessionsWithStats.length;
+      const safePage = Math.max(1, page);
+      const safeLimit = Math.max(1, limit);
+      const start = (safePage - 1) * safeLimit;
+      const paged = sessionsWithStats.slice(start, start + safeLimit);
+
+      return {
+        total,
+        sessions: paged.map((session) => ({
+          sessionId: session.sessionId,
+          updatedAt: new Date(session.updatedAtMs).toISOString(),
+        })),
+      };
+    } catch (e) {
+      return { total: 0, sessions: [] };
+    }
+  }
 }
