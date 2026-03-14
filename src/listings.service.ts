@@ -1,3 +1,4 @@
+/* eslint-disable prettier/prettier */
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { ChromaClient, Collection } from 'chromadb';
 import { GoogleGeminiEmbeddingFunction } from '@chroma-core/google-gemini';
@@ -131,7 +132,7 @@ export class ListingsService implements OnModuleInit {
     text: string,
     base64Image: string,
   ): Promise<string> {
-    const model = this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const model = this.genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL || 'gemini-2.5-flash' });
     const prompt = `Convert the following user intent and the provided image into an optimized search query for a real estate listing database. User intent: "${text}"`;
 
     const result = await model.generateContent([
@@ -147,7 +148,7 @@ export class ListingsService implements OnModuleInit {
   }
 
   private async refineTextQuery(text: string): Promise<string> {
-    const model = this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const model = this.genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL || 'gemini-2.5-flash' });
     const prompt = `You are a real estate search assistant. Reformulate this user query into a highly descriptive semantic search query for a vector database. Query: "${text}"`;
 
     const result = await model.generateContent([prompt]);

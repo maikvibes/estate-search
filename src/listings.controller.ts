@@ -14,6 +14,7 @@ export class ListingsController {
     }
   }
 
+
   // REST endpoint to search
   @Post('search')
   async searchListings(@Body() body: { text: string; imageBase64?: string }) {
