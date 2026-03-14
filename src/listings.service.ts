@@ -15,7 +15,7 @@ export class ListingsService implements OnModuleInit {
 
   async onModuleInit() {
     this.chromaClient = new ChromaClient({
-      path: process.env.CHROMA_HOST || 'http://localhost:8000',
+      path: process.env.CHROMA_HOST || 'http://localhost:2222',
     });
 
     const apiKey = process.env.GEMINI_API_KEY;
