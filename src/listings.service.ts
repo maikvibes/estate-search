@@ -8,10 +8,50 @@ import { ListingPublishedMessage } from './types/listing.type';
 @Injectable()
 export class ListingsService implements OnModuleInit {
   private readonly logger = new Logger(ListingsService.name);
+  private readonly searchCacheMaxEntries = Number(
+    process.env.SEARCH_CACHE_MAX_ENTRIES || 100,
+  );
+  private readonly searchCache = new Map<string, unknown>();
   private chromaClient: ChromaClient;
   private collection: Collection;
   private genAI: GoogleGenerativeAI;
   private embedder: GoogleGeminiEmbeddingFunction;
+
+  private buildSearchCacheKey(queryText: string, imageBase64?: string): string {
+    return `${queryText}::${imageBase64 || ''}`;
+  }
+
+  private getCachedSearchResult(cacheKey: string): unknown | null {
+    const cached = this.searchCache.get(cacheKey);
+    if (!cached) {
+      return null;
+    }
+
+    // Reinsert on hit to keep access-order for LRU behavior.
+    this.searchCache.delete(cacheKey);
+    this.searchCache.set(cacheKey, cached);
+    return cached;
+  }
+
+  private setCachedSearchResult(cacheKey: string, result: unknown): void {
+    if (this.searchCache.has(cacheKey)) {
+      this.searchCache.delete(cacheKey);
+    }
+
+    this.searchCache.set(cacheKey, result);
+
+    if (this.searchCache.size > this.searchCacheMaxEntries) {
+      const lruKey = this.searchCache.keys().next().value as string | undefined;
+      if (lruKey) {
+        this.searchCache.delete(lruKey);
+      }
+    }
+  }
+
+  private invalidateSearchCache(): void {
+    this.searchCache.clear();
+    this.logger.log('Search cache invalidated after listing publication.');
+  }
 
   async onModuleInit() {
     this.chromaClient = new ChromaClient({
@@ -29,7 +69,7 @@ export class ListingsService implements OnModuleInit {
       apiKey: apiKey || 'uninitialized',
       modelName: 'gemini-embedding-2-preview',
     });
-    this
+
     try {
       this.collection = await this.chromaClient.getOrCreateCollection({
         name: 'listings',
@@ -91,6 +131,7 @@ export class ListingsService implements OnModuleInit {
         uris: uris.filter((u) => u !== undefined).length > 0 ? uris : undefined,
         metadatas,
       });
+      this.invalidateSearchCache();
       this.logger.log(
         `Listing ${listing.listingId} embedded and stored in ChromaDB.`,
       );
@@ -104,6 +145,13 @@ export class ListingsService implements OnModuleInit {
 
   async queryListings(queryText: string, imageBase64?: string) {
     let finalQueryText = queryText;
+    const cacheKey = this.buildSearchCacheKey(finalQueryText, imageBase64);
+
+    const cachedResult = this.getCachedSearchResult(cacheKey);
+    if (cachedResult) {
+      this.logger.debug(`Search cache hit for key: ${cacheKey}`);
+      return cachedResult;
+    }
 
     // Optional: Refine the query with Gemini if an image is provided
     // if (imageBase64) {
@@ -121,6 +169,7 @@ export class ListingsService implements OnModuleInit {
         nResults: 5,
       });
 
+      this.setCachedSearchResult(cacheKey, results);
       return results;
     } catch (e) {
       this.logger.error('Error querying ChromaDB', e);
