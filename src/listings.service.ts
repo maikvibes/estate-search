@@ -1,6 +1,6 @@
 /* eslint-disable prettier/prettier */
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
-import { ChromaClient, Collection } from 'chromadb';
+import { ChromaClient, Collection, Metadata, QueryResult } from 'chromadb';
 import { GoogleGeminiEmbeddingFunction } from '@chroma-core/google-gemini';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ListingPublishedMessage } from './types/listing.type';
@@ -11,7 +11,7 @@ export class ListingsService implements OnModuleInit {
   private readonly searchCacheMaxEntries = Number(
     process.env.SEARCH_CACHE_MAX_ENTRIES || 100,
   );
-  private readonly searchCache = new Map<string, unknown>();
+  private readonly searchCache = new Map<string, QueryResult<Metadata>>();
   private chromaClient: ChromaClient;
   private collection: Collection;
   private genAI: GoogleGenerativeAI;
@@ -21,7 +21,7 @@ export class ListingsService implements OnModuleInit {
     return `${queryText}::${imageBase64 || ''}`;
   }
 
-  private getCachedSearchResult(cacheKey: string): unknown | null {
+  private getCachedSearchResult(cacheKey: string): QueryResult<Metadata> | null {
     const cached = this.searchCache.get(cacheKey);
     if (!cached) {
       return null;
@@ -33,7 +33,7 @@ export class ListingsService implements OnModuleInit {
     return cached;
   }
 
-  private setCachedSearchResult(cacheKey: string, result: unknown): void {
+  private setCachedSearchResult(cacheKey: string, result: QueryResult<Metadata>): void {
     if (this.searchCache.has(cacheKey)) {
       this.searchCache.delete(cacheKey);
     }
@@ -143,7 +143,7 @@ export class ListingsService implements OnModuleInit {
     }
   }
 
-  async queryListings(queryText: string, imageBase64?: string) {
+  async queryListings(queryText: string, imageBase64?: string) : Promise<QueryResult<Metadata>> {
     let finalQueryText = queryText;
     const cacheKey = this.buildSearchCacheKey(finalQueryText, imageBase64);
 
